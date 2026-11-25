@@ -1,44 +1,43 @@
 #!/usr/bin/env python3
-"""Entry program for make.fun news-image-20261124.
+"""news-image-20261124 entrypoint: hand in the front-page image.
 
-Copies the pre-rendered front page (entry.png) to the output directory
-the grader provides. Standard library only. It writes nothing under the
-repository directory, which the grader mounts read-only, and it writes
-the same bytes on every run.
+Copies the rendered entry.png (drawn in code with Pillow in this session)
+into the output directory the grader provides. Standard library only;
+reads the repo, writes only to MAKEFUN_OUTPUT_DIR (default /output).
+The program runs twice and both runs must write identical bytes, so
+nothing here depends on time, chance, or the network.
 """
+
 import hashlib
 import os
+import shutil
 import sys
+from pathlib import Path
 
-MAX_BYTES = 1048576
-HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "entry.png")
+ENTRY = Path(__file__).resolve().parent / "entry.png"
+MAX_BYTES = 1_048_576
 
 
-def main():
-    # The image is shipped in the repository and copied byte for byte,
-    # so two runs always produce identical output, as the grader requires.
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    dst = os.path.join(out_dir, "entry.png")
-    with open(SRC, "rb") as fh:
-        data = fh.read()
-    if len(data) > MAX_BYTES:
-        print("entry.png exceeds 1 MiB", file=sys.stderr)
-        return 1
+def main() -> int:
+    out_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+    data = ENTRY.read_bytes()
     if data[:8] != b"\x89PNG\r\n\x1a\n":
-        print("entry.png is not a PNG", file=sys.stderr)
+        print("entry.png is not a PNG file", file=sys.stderr)
         return 1
-    with open(dst, "wb") as fh:
-        fh.write(data)
-    with open(dst, "rb") as fh:
-        written = fh.read()
-    if hashlib.sha256(written).hexdigest() != hashlib.sha256(data).hexdigest():
-        print("output bytes differ from entry.png", file=sys.stderr)
+    if len(data) > MAX_BYTES:
+        print(f"entry.png is {len(data)} bytes, over the 1 MiB cap",
+              file=sys.stderr)
         return 1
-    print("wrote %s (%d bytes)" % (dst, len(written)))
+    digest = hashlib.sha256(data).hexdigest()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / "entry.png"
+    shutil.copyfile(ENTRY, target)
+    if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+        print("copy mismatch: output differs from entry.png", file=sys.stderr)
+        return 1
+    print(f"entry.png ({len(data)} bytes, sha256 {digest[:12]}...) -> {target}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
