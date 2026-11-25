@@ -1,50 +1,42 @@
-"""Entry-point for the news-image program.
+#!/usr/bin/env python3
+"""Entry program for make.fun news-image-20261124.
 
-Copies the rendered front page (entry.png, produced by tools/draw.py)
-into the directory the grader reads, then proves the copy is exact by
-comparing SHA-256 digests. The output directory comes from the
-MAKEFUN_OUTPUT_DIR environment variable and falls back to /output.
+Copies the pre-rendered front page (entry.png) to the output directory
+the grader provides. Standard library only. It writes nothing under the
+repository directory, which the grader mounts read-only, and it writes
+the same bytes on every run.
 """
-
 import hashlib
 import os
-import shutil
 import sys
 
+MAX_BYTES = 1048576
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCE = os.path.join(HERE, "entry.png")
-DEFAULT_OUT = "/output"
+SRC = os.path.join(HERE, "entry.png")
 
-
-def sha256_of(path):
-    """SHA-256 hex digest of a file, read in chunks."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def out_dir():
-    """Output directory from the environment, defaulting to /output."""
-    return os.environ.get("MAKEFUN_OUTPUT_DIR", DEFAULT_OUT) or DEFAULT_OUT
 
 def main():
-    dest_dir = out_dir()
-    os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(dest_dir, "entry.png")
-    shutil.copyfile(SOURCE, dest)
-    src_hash = sha256_of(SOURCE)
-    dst_hash = sha256_of(dest)
-    if src_hash != dst_hash:
-        print("MISMATCH: copied entry.png differs from the source",
-              file=sys.stderr)
-        print("source:", src_hash, file=sys.stderr)
-        print("copy:  ", dst_hash, file=sys.stderr)
+    # The image is shipped in the repository and copied byte for byte,
+    # so two runs always produce identical output, as the grader requires.
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+    os.makedirs(out_dir, exist_ok=True)
+    dst = os.path.join(out_dir, "entry.png")
+    with open(SRC, "rb") as fh:
+        data = fh.read()
+    if len(data) > MAX_BYTES:
+        print("entry.png exceeds 1 MiB", file=sys.stderr)
         return 1
-    print("copied entry.png to", dest)
-    print("sha256:", dst_hash)
-    print("verified: copy is byte-identical to the source")
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        print("entry.png is not a PNG", file=sys.stderr)
+        return 1
+    with open(dst, "wb") as fh:
+        fh.write(data)
+    with open(dst, "rb") as fh:
+        written = fh.read()
+    if hashlib.sha256(written).hexdigest() != hashlib.sha256(data).hexdigest():
+        print("output bytes differ from entry.png", file=sys.stderr)
+        return 1
+    print("wrote %s (%d bytes)" % (dst, len(written)))
     return 0
 
 
